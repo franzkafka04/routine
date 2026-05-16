@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Class Schedule Builder</title>
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Nunito+Sans:wght@400;600;700&display=swap" rel="stylesheet">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <style>
     :root {
       --bg: #f0f1f5;
@@ -405,7 +404,7 @@
 
   <div class="page-header">
     <h1>Class Schedule Builder</h1>
-    <p>Enter your courses, pick your days and time slots - your schedule draws iitself..</p>
+    <p>Enter your courses, pick your days and time slots - your schedule draws itself.</p>
   </div>
 
   <div class="panel">
@@ -706,25 +705,174 @@
       body.innerHTML = bodyHtml;
     }
 
-    async function downloadPNG() {
+    // ── Pure Canvas download — pixel-perfect, no html2canvas ──────────────
+    function downloadPNG() {
       const btn = document.getElementById('dlBtn');
       btn.textContent = '…';
       btn.disabled = true;
 
-      const target = document.getElementById('posterCard');
+      const S = 3;
+      const W = POSTER_W * S;
+      const H = POSTER_H * S;
 
-      const canvas = await html2canvas(target, {
-        scale: 4,
-        useCORS: true,
-        backgroundColor: '#ffffff',
-        logging: false,
-        width: 1123,
-        height: 794,
-        onclone: (doc) => {
-          doc.querySelectorAll('*').forEach(el => {
-            el.style.fontFamily = el.style.fontFamily || '';
-          });
+      const canvas = document.createElement('canvas');
+      canvas.width  = W;
+      canvas.height = H;
+      const ctx = canvas.getContext('2d');
+      ctx.scale(S, S);
+
+      const sName = document.getElementById('studentName').value.trim() || '—';
+      const sDept = document.getElementById('studentDept').value.trim() || '—';
+      const uniqueDays = new Set();
+      courses.forEach(c => (DAY_MAP[c.days]||[]).forEach(d => uniqueDays.add(d)));
+      const totalHours = courses.length * 3;
+
+      // Layout
+      const PW = POSTER_W, PH = POSTER_H;
+      const HDR_H   = 90;
+      const STAT_H  = 50;
+      const THEAD_H = 36;
+      const TIME_W  = 82;
+      const TABLE_Y = HDR_H + STAT_H;
+      const BODY_H  = PH - TABLE_Y - THEAD_H;
+      const ROW_H   = BODY_H / SLOTS.length;
+      const COL_W   = (PW - TIME_W) / DAYS.length;
+
+      // Background
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, PW, PH);
+
+      // Header
+      ctx.fillStyle = '#1a1a2e';
+      ctx.fillRect(0, 0, PW, HDR_H);
+
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#ffffff';
+      ctx.font = `900 26px Nunito, sans-serif`;
+      ctx.fillText('Class Schedule', 36, 36);
+      ctx.font = `700 10px Nunito, sans-serif`;
+      ctx.fillStyle = 'rgba(255,255,255,0.4)';
+      ctx.fillText('WEEKLY TIMETABLE', 36, 60);
+
+      // Name chip (right side)
+      ctx.textAlign = 'right';
+      ctx.font = `700 9px Nunito, sans-serif`;
+      ctx.fillStyle = 'rgba(255,255,255,0.4)';
+      ctx.fillText('NAME', PW - 160, 33);
+      ctx.font = `800 13px Nunito, sans-serif`;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(sName, PW - 160, 55);
+
+      // Divider
+      ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(PW - 148, 22); ctx.lineTo(PW - 148, 72); ctx.stroke();
+
+      // Dept chip
+      ctx.textAlign = 'right';
+      ctx.font = `700 9px Nunito, sans-serif`;
+      ctx.fillStyle = 'rgba(255,255,255,0.4)';
+      ctx.fillText('DEPARTMENT', PW - 28, 33);
+      ctx.font = `800 13px Nunito, sans-serif`;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(sDept, PW - 28, 55);
+      ctx.textAlign = 'left';
+
+      // Stats strip
+      ctx.fillStyle = '#f7f8fc';
+      ctx.fillRect(0, HDR_H, PW, STAT_H);
+      ctx.strokeStyle = '#e8eaf0';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(0, HDR_H + STAT_H); ctx.lineTo(PW, HDR_H + STAT_H); ctx.stroke();
+
+      [
+        { val: String(courses.length), lbl: 'COURSES' },
+        { val: totalHours + 'h',        lbl: '/ WEEK'  },
+        { val: String(uniqueDays.size), lbl: 'ACTIVE DAYS' },
+      ].forEach((s, i) => {
+        const cx = (PW / 3) * i + PW / 6;
+        if (i > 0) {
+          ctx.strokeStyle = '#e8eaf0'; ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.moveTo((PW/3)*i, HDR_H+10); ctx.lineTo((PW/3)*i, HDR_H+STAT_H-10); ctx.stroke();
         }
+        ctx.font = `900 17px Nunito, sans-serif`;
+        ctx.fillStyle = '#1a1a2e';
+        ctx.textAlign = 'center';
+        ctx.fillText(s.val, cx - 18, HDR_H + STAT_H / 2);
+        const vw = ctx.measureText(s.val).width;
+        ctx.font = `700 9px Nunito, sans-serif`;
+        ctx.fillStyle = '#aaa';
+        ctx.textAlign = 'left';
+        ctx.fillText(s.lbl, cx - 18 + vw / 2 + 5, HDR_H + STAT_H / 2);
+      });
+      ctx.textAlign = 'left';
+
+      // Table header
+      ctx.fillStyle = '#f7f8fc';
+      ctx.fillRect(0, TABLE_Y, PW, THEAD_H);
+      ctx.strokeStyle = '#e0e3ee'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(0, TABLE_Y + THEAD_H); ctx.lineTo(PW, TABLE_Y + THEAD_H); ctx.stroke();
+
+      ctx.font = `800 10px Nunito, sans-serif`;
+      ctx.fillStyle = '#ccc';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('TIME', TIME_W / 2, TABLE_Y + THEAD_H / 2);
+
+      DAYS.forEach((d, di) => {
+        const x = TIME_W + di * COL_W;
+        ctx.strokeStyle = '#e8eaf0'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(x, TABLE_Y); ctx.lineTo(x, PH); ctx.stroke();
+        ctx.font = `800 11px Nunito, sans-serif`;
+        ctx.fillStyle = '#777';
+        ctx.fillText(d.toUpperCase(), x + COL_W / 2, TABLE_Y + THEAD_H / 2);
+      });
+
+      // Time col border
+      ctx.strokeStyle = '#e8eaf0'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(TIME_W, TABLE_Y); ctx.lineTo(TIME_W, PH); ctx.stroke();
+
+      // Grid
+      const grid = Array.from({length: SLOTS.length}, () => Array(DAYS.length).fill(null));
+      courses.forEach(c => (DAY_MAP[c.days]||[]).forEach(di => { grid[c.slot][di] = c; }));
+
+      SLOTS.forEach((slot, si) => {
+        const ry = TABLE_Y + THEAD_H + si * ROW_H;
+
+        // Row line
+        ctx.strokeStyle = '#eaecf2'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(0, ry); ctx.lineTo(PW, ry); ctx.stroke();
+
+        // Time cell
+        ctx.fillStyle = '#f7f8fc';
+        ctx.fillRect(0, ry, TIME_W, ROW_H);
+        ctx.font = `700 10px Nunito, sans-serif`;
+        ctx.fillStyle = '#bbb';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(slot.split('–')[0].trim().replace(':', '.'), TIME_W / 2, ry + ROW_H / 2);
+
+        // Day cells
+        DAYS.forEach((_, di) => {
+          const cx = TIME_W + di * COL_W;
+          const c = grid[si][di];
+          if (c) {
+            const col = COLORS[c.color];
+            ctx.fillStyle = col.bg;
+            ctx.fillRect(cx + 1, ry + 1, COL_W - 1, ROW_H - 1);
+            ctx.fillStyle = col.border;
+            ctx.fillRect(cx + 1, ry + 1, COL_W - 1, 4);
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            const hasRoom = !!c.room;
+            ctx.font = `900 12px Nunito, sans-serif`;
+            ctx.fillStyle = col.text;
+            ctx.fillText(c.name, cx + COL_W / 2, ry + ROW_H / 2 - (hasRoom ? 7 : 0));
+            if (hasRoom) {
+              ctx.font = `600 10px Nunito, sans-serif`;
+              ctx.globalAlpha = 0.6;
+              ctx.fillText(c.room, cx + COL_W / 2, ry + ROW_H / 2 + 9);
+              ctx.globalAlpha = 1;
+            }
+          }
+        });
       });
 
       const a = document.createElement('a');
