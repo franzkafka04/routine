@@ -30,7 +30,7 @@
     .page-header { margin-bottom: 18px; }
     .page-header h1 {
       font-family: 'Nunito', sans-serif;
-      font-size: clamp(1.4rem, 5vw, 2rem);
+      font-size: 2rem;
       font-weight: 900;
       color: var(--dark);
       margin-bottom: 4px;
@@ -209,14 +209,25 @@
     .preview-btns { display: flex; gap: 8px; align-items: center; }
     .preview-btns .btn { width: auto; font-size: 0.78rem; padding: 7px 14px; }
 
+    /* Fixed-size poster: always 800×500px internally, scaled to fit screen */
+    .poster-scaler {
+      width: 100%;
+      overflow: hidden;
+      border-radius: 10px;
+      /* height is set by JS to match the scaled height */
+    }
     #posterCard {
       position: relative;
       background: #d9d9d9;
       border-radius: 10px;
       overflow: hidden;
       padding: 32px 28px 28px;
-      min-height: 420px;
       font-family: 'Nunito', sans-serif;
+      /* Fixed design canvas: always 800×500 */
+      width: 800px;
+      height: 500px;
+      transform-origin: top left;
+      /* transform scale set by JS */
     }
 
     /* Diagonal geometric shapes */
@@ -243,7 +254,7 @@
     .poster-title {
       font-family: 'Nunito', sans-serif;
       font-weight: 900;
-      font-size: clamp(1.5rem, 4.5vw, 2.4rem);
+      font-size: 2.2rem;
       color: #2a2a2a;
       letter-spacing: -0.5px;
       line-height: 1.05;
@@ -390,14 +401,7 @@
       .form-grid { grid-template-columns: 1fr 1fr 1fr; }
       .btn-add-wrap { grid-column: auto; }
     }
-    @media (max-width: 500px) {
-      .poster-title { font-size: 1.3rem; }
-      .poster-table thead th { font-size: 0.68rem; padding: 6px 2px; }
-      .poster-table tbody td.time-cell { font-size: 0.68rem; width: 50px; }
-      .poster-table tbody td { height: 44px; }
-      .pcourse-name { font-size: 0.62rem; }
-      .poster-info-box { min-width: 120px; }
-    }
+    /* Poster internals are always fixed-size – no responsive overrides needed */
   </style>
 </head>
 <body>
@@ -468,7 +472,7 @@
     <div class="entry-list" id="entryList"></div>
   </div>
 
-  <div class="preview-wrap">
+    <div class="preview-wrap">
     <div class="preview-actions">
       <div>
         <div class="preview-label">Live Preview</div>
@@ -480,6 +484,7 @@
       </div>
     </div>
 
+    <div class="poster-scaler" id="posterScaler">
     <div id="posterCard">
 
       <div class="geo">
@@ -520,9 +525,24 @@
       </div>
 
     </div>
+    </div><!-- /posterScaler -->
   </div>
 
   <script>
+    const POSTER_W = 800;
+    const POSTER_H = 500;
+
+    function scalePoster() {
+      const scaler = document.getElementById('posterScaler');
+      const card   = document.getElementById('posterCard');
+      const available = scaler.clientWidth;
+      const scale = available / POSTER_W;
+      card.style.transform = `scale(${scale})`;
+      scaler.style.height = (POSTER_H * scale) + 'px';
+    }
+
+    window.addEventListener('resize', scalePoster);
+
     const DAYS   = ['Sun','Mon','Tue','Wed','Thu','Sat'];
     const SLOTS  = ['08:00–09:30','09:40–11:10','11:20–12:50','13:00–14:30','14:40–16:10','16:20–17:50'];
     const COLORS = [
@@ -726,6 +746,8 @@
     document.getElementById('courseName').addEventListener('input', clearConflictError);
 
     renderPreview();
+    // Delay to ensure fonts/layout settled before first scale
+    requestAnimationFrame(scalePoster);
   </script>
 </body>
 </html>
