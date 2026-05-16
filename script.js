@@ -1,5 +1,6 @@
 // ── CONFIG ──────────────────────────────────────────────
-const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Sat'];
+// Columns: Sun(0), Mon(1), Tue(2), Wed(3), Thu(4), Sat(5)
+const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Sat'];
 
 const SLOTS = [
   '08:00 – 09:30',
@@ -11,46 +12,35 @@ const SLOTS = [
 ];
 
 const COLORS = [
-  { bg: '#c8e6c9', border: '#388e3c', text: '#1b5e20' }, // green
-  { bg: '#bbdefb', border: '#1976d2', text: '#0d47a1' }, // blue
-  { bg: '#ffe0b2', border: '#f57c00', text: '#e65100' }, // orange
-  { bg: '#f8bbd0', border: '#c2185b', text: '#880e4f' }, // pink
-  { bg: '#e1bee7', border: '#7b1fa2', text: '#4a148c' }, // purple
-  { bg: '#b2dfdb', border: '#00796b', text: '#004d40' }, // teal
-  { bg: '#fff9c4', border: '#f9a825', text: '#f57f17' }, // yellow
-  { bg: '#ffccbc', border: '#e64a19', text: '#bf360c' }, // deep-orange
+  { bg: '#e8f5e9', border: '#43a047', text: '#2e7d32' },
+  { bg: '#e3f2fd', border: '#1e88e5', text: '#1565c0' },
+  { bg: '#fff3e0', border: '#fb8c00', text: '#e65100' },
+  { bg: '#fce4ec', border: '#e91e63', text: '#880e4f' },
+  { bg: '#f3e5f5', border: '#8e24aa', text: '#4a148c' },
+  { bg: '#e0f2f1', border: '#00897b', text: '#004d40' },
+  { bg: '#fffde7', border: '#fdd835', text: '#f57f17' },
+  { bg: '#fbe9e7', border: '#f4511e', text: '#bf360c' },
 ];
 
-// Day group → column indices into DAYS array
-// DAYS = ['Mon'(0), 'Tue'(1), 'Wed'(2), 'Thu'(3), 'Sat'(4)]
-const DAY_MAP = {
-  MW: [0, 2],   // Mon & Wed
-  ST: [4, 1],   // Sat & Tue
-  AR: [3, 4],   // Thu & Sat
-};
+// MW=Mon&Wed → cols 1,3 | ST=Sun&Tue → cols 0,2 | AR=Thu&Sat → cols 4,5
+const DAY_MAP = { MW: [1, 3], ST: [0, 2], AR: [4, 5] };
 
 let courses = [];
 
-// ── AUTO COLOR ───────────────────────────────────────────
 function nextColor() {
   const used = new Set(courses.map(c => c.color));
-  for (let i = 0; i < COLORS.length; i++) {
-    if (!used.has(i)) return i;
-  }
+  for (let i = 0; i < COLORS.length; i++) if (!used.has(i)) return i;
   const counts = Array(COLORS.length).fill(0);
   courses.forEach(c => counts[c.color]++);
   return counts.indexOf(Math.min(...counts));
 }
 
-// ── ADD COURSE ───────────────────────────────────────────
 function addCourse() {
   const name = document.getElementById('courseName').value.trim().toUpperCase();
   const room = document.getElementById('courseRoom').value.trim().toUpperCase();
   const days = document.getElementById('courseDays').value;
   const slot = parseInt(document.getElementById('courseSlot').value);
-
   if (!name) { alert('Please enter a course name.'); return; }
-
   courses.push({ name, room, days, slot, color: nextColor() });
   renderTags();
   drawSchedule();
@@ -70,7 +60,6 @@ function clearAll() {
   drawSchedule();
 }
 
-// ── ENTRY TAGS ───────────────────────────────────────────
 function renderTags() {
   const list = document.getElementById('entryList');
   list.innerHTML = '';
@@ -95,158 +84,168 @@ function renderTags() {
 const canvas = document.getElementById('scheduleCanvas');
 const ctx = canvas.getContext('2d');
 
+function rr(x, y, w, h, r = 8) {
+  if (typeof r === 'number') r = [r, r, r, r];
+  const [tl, tr, br, bl] = r;
+  ctx.beginPath();
+  ctx.moveTo(x + tl, y);
+  ctx.lineTo(x + w - tr, y);   ctx.arcTo(x+w, y,   x+w, y+tr,   tr);
+  ctx.lineTo(x + w, y+h-br);   ctx.arcTo(x+w, y+h, x+w-br, y+h, br);
+  ctx.lineTo(x + bl, y + h);   ctx.arcTo(x, y+h,   x, y+h-bl,   bl);
+  ctx.lineTo(x, y + tl);       ctx.arcTo(x, y,     x+tl, y,     tl);
+  ctx.closePath();
+}
+
+function fillRR(x, y, w, h, r, color) {
+  ctx.fillStyle = color;
+  rr(x, y, w, h, r);
+  ctx.fill();
+}
+
+function fitText(text, maxW) {
+  if (ctx.measureText(text).width <= maxW) return text;
+  while (text.length > 1 && ctx.measureText(text + '…').width > maxW)
+    text = text.slice(0, -1);
+  return text + '…';
+}
+
 function drawSchedule() {
-  const W = 960, H = 620;
-  canvas.width = W;
+  const W = 1020, H = 640;
+  canvas.width  = W;
   canvas.height = H;
 
-  const PAD    = 28;
-  const TIME_W = 110;
-  const cols   = DAYS.length;
-  const COL_W  = (W - PAD * 2 - TIME_W) / cols;
+  const PAD       = 24;
+  const HDR_H     = 72;
+  const TIME_W    = 96;
+  const cols      = DAYS.length;
+  const COL_W     = (W - PAD * 2 - TIME_W) / cols;
+  const TX        = PAD;
+  const TY        = PAD + HDR_H + 16;
+  const TW        = W - PAD * 2;
+  const TH        = H - TY - PAD;
+  const COL_HDR_H = 36;
+  const ROW_H     = (TH - COL_HDR_H) / SLOTS.length;
 
-  // ── Background ──
-  ctx.fillStyle = '#d6d6d6';
+  // Background
+  ctx.fillStyle = '#f7f8fa';
   ctx.fillRect(0, 0, W, H);
 
-  // Diagonal decorative polygons (top-left)
-  [
-    { pts: [[0,0],[220,0],[320,140],[0,200]], color: '#c0c0c0' },
-    { pts: [[0,0],[140,0],[220,100],[0,130]], color: '#b8b8b8' },
-    { pts: [[0,160],[180,0],[260,0],[0,240]], color: '#cacaca', alpha: 0.5 },
-  ].forEach(p => {
-    ctx.save();
-    ctx.globalAlpha = p.alpha || 1;
-    ctx.fillStyle = p.color;
-    ctx.beginPath();
-    p.pts.forEach(([x, y], i) => i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y));
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
-  });
+  // Top accent strip
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(0, 0, W, 4);
 
-  // ── Title area ──
-  ctx.fillStyle = '#ffffff';
-  roundRect(ctx, 0, 0, W * 0.5, PAD + 60, 0);
-  ctx.fill();
+  // Title
+  ctx.font = 'bold 28px Nunito, sans-serif';
+  ctx.fillStyle = '#1a1a2e';
+  ctx.textAlign = 'left';
+  ctx.fillText('Class Schedule', PAD, PAD + 32);
+  ctx.fillStyle = '#4f46e5';
+  ctx.fillRect(PAD, PAD + 38, 48, 3);
 
-  ctx.font = 'bold 36px Nunito, sans-serif';
-  ctx.fillStyle = '#2e2e2e';
-  ctx.fillText('Class Schedule', PAD, 48);
-
-  // ── Name / Dept boxes (top-right) ──
-  const boxX = W * 0.55, boxY = PAD - 4, boxW = W * 0.38, boxH = 24;
+  // Name / Dept pills
   const studentName = document.getElementById('studentName').value.trim();
   const studentDept = document.getElementById('studentDept').value.trim();
+  const pillX = W * 0.52, pillW = W - (W * 0.52) - PAD;
 
-  ctx.fillStyle = '#ffffff';
-  roundRect(ctx, boxX, boxY, boxW, boxH); ctx.fill();
-  ctx.fillStyle = '#e0e0e0';
-  roundRect(ctx, boxX, boxY + boxH + 4, boxW, boxH); ctx.fill();
+  [[PAD + 4, 'NAME', studentName], [PAD + 36, 'DEPT', studentDept]].forEach(([py, lbl, val]) => {
+    fillRR(pillX, py, pillW, 26, 6, '#ffffff');
+    ctx.strokeStyle = '#e5e7eb'; ctx.lineWidth = 1;
+    rr(pillX, py, pillW, 26, 6); ctx.stroke();
+    ctx.font = '600 11px Nunito Sans, sans-serif';
+    ctx.fillStyle = '#9ca3af'; ctx.textAlign = 'left';
+    ctx.fillText(lbl, pillX + 10, py + 17);
+    ctx.font = '700 12px Nunito Sans, sans-serif';
+    ctx.fillStyle = '#1a1a2e'; ctx.textAlign = 'right';
+    ctx.fillText(val || '—', pillX + pillW - 10, py + 17);
+  });
 
-  ctx.font = '600 13px Nunito Sans, sans-serif';
-  ctx.fillStyle = '#555';
-  ctx.fillText('Name:  ' + (studentName || ''), boxX + 10, boxY + 17);
-  ctx.fillText('Dept:  ' + (studentDept || ''), boxX + 10, boxY + boxH + 4 + 17);
+  // Table card
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,0.07)';
+  ctx.shadowBlur = 24;
+  ctx.shadowOffsetY = 6;
+  fillRR(TX, TY, TW, TH, 12, '#ffffff');
+  ctx.restore();
+  ctx.strokeStyle = '#e5e7eb'; ctx.lineWidth = 1;
+  rr(TX, TY, TW, TH, 12); ctx.stroke();
 
-  // ── Table ──
-  const TX = PAD, TY = PAD + 68;
-  const TW = W - PAD * 2, TH = H - TY - PAD;
-  const rowH = TH / (SLOTS.length + 1);
+  // Column header
+  fillRR(TX, TY, TW, COL_HDR_H, [12, 12, 0, 0], '#1a1a2e');
 
-  ctx.fillStyle = '#ffffff';
-  roundRect(ctx, TX, TY, TW, TH, 6); ctx.fill();
-
-  // Header row
-  ctx.fillStyle = '#3a3a3a';
-  roundRectTop(ctx, TX, TY, TW, rowH, 6); ctx.fill();
-
-  const headers = ['Time', ...DAYS];
   const colWidths = [TIME_W, ...Array(cols).fill(COL_W)];
   let cx = TX;
-  headers.forEach((h, hi) => {
+  ['', ...DAYS].forEach((h, hi) => {
     const cw = colWidths[hi];
-    ctx.font = 'bold 14px Nunito, sans-serif';
-    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 12px Nunito, sans-serif';
+    ctx.fillStyle = hi === 0 ? 'rgba(255,255,255,0.3)' : '#ffffff';
     ctx.textAlign = 'center';
-    ctx.fillText(h, cx + cw / 2, TY + rowH / 2 + 5);
+    ctx.fillText(h, cx + cw / 2, TY + COL_HDR_H / 2 + 5);
     cx += cw;
   });
 
-  // Row alternating backgrounds
+  // Row stripes
   SLOTS.forEach((_, si) => {
-    const ry = TY + rowH * (si + 1);
-    ctx.fillStyle = si % 2 === 0 ? '#f5f5f5' : '#ebebeb';
-    if (si === SLOTS.length - 1) {
-      roundRectBottom(ctx, TX, ry, TW, rowH, 6); ctx.fill();
-    } else {
-      ctx.fillRect(TX, ry, TW, rowH);
-    }
+    const ry = TY + COL_HDR_H + ROW_H * si;
+    ctx.fillStyle = si % 2 === 0 ? '#ffffff' : '#f9fafb';
+    if (si === SLOTS.length - 1) { rr(TX, ry, TW, ROW_H, [0, 0, 12, 12]); }
+    else { ctx.beginPath(); ctx.rect(TX, ry, TW, ROW_H); }
+    ctx.fill();
   });
 
   // Grid lines
-  ctx.strokeStyle = '#cccccc';
-  ctx.lineWidth = 1;
-  for (let r = 1; r <= SLOTS.length; r++) {
-    const ry = TY + rowH * r;
-    ctx.beginPath(); ctx.moveTo(TX, ry); ctx.lineTo(TX + TW, ry); ctx.stroke();
+  ctx.strokeStyle = '#f0f0f0'; ctx.lineWidth = 1;
+  for (let r = 1; r < SLOTS.length; r++) {
+    const ry = TY + COL_HDR_H + ROW_H * r;
+    ctx.beginPath(); ctx.moveTo(TX + 1, ry); ctx.lineTo(TX + TW - 1, ry); ctx.stroke();
   }
   let vx = TX;
-  colWidths.forEach(cw => {
+  colWidths.forEach((cw, i) => {
     vx += cw;
-    if (vx < TX + TW) {
-      ctx.beginPath(); ctx.moveTo(vx, TY); ctx.lineTo(vx, TY + TH); ctx.stroke();
+    if (i < colWidths.length - 1) {
+      ctx.beginPath(); ctx.moveTo(vx, TY + COL_HDR_H); ctx.lineTo(vx, TY + TH); ctx.stroke();
     }
   });
 
-  // Table border
-  ctx.strokeStyle = '#333';
-  ctx.lineWidth = 2;
-  ctx.strokeRect(TX, TY, TW, TH);
+  // Header separator
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(TX, TY + COL_HDR_H); ctx.lineTo(TX + TW, TY + COL_HDR_H); ctx.stroke();
 
   // Time labels
   SLOTS.forEach((slot, si) => {
-    const ry = TY + rowH * (si + 1);
+    const ry = TY + COL_HDR_H + ROW_H * si;
     const [t1, t2] = slot.split('–');
     ctx.textAlign = 'center';
-    ctx.font = 'bold 12px Nunito, sans-serif';
-    ctx.fillStyle = '#2e2e2e';
-    ctx.fillText(t1.trim(), TX + TIME_W / 2, ry + rowH * 0.38);
-    ctx.font = '600 12px Nunito Sans, sans-serif';
-    ctx.fillStyle = '#555';
-    ctx.fillText('– ' + t2.trim(), TX + TIME_W / 2, ry + rowH * 0.65);
+    ctx.font = 'bold 11px Nunito, sans-serif';
+    ctx.fillStyle = '#374151';
+    ctx.fillText(t1.trim(), TX + TIME_W / 2, ry + ROW_H * 0.4);
+    ctx.font = '500 10px Nunito Sans, sans-serif';
+    ctx.fillStyle = '#9ca3af';
+    ctx.fillText(t2.trim(), TX + TIME_W / 2, ry + ROW_H * 0.66);
   });
 
-  // ── Draw courses ──
+  // Course cells
   courses.forEach(c => {
-    const colIdxs = DAY_MAP[c.days] || [];
-    colIdxs.forEach(ci => {
-      const cellX = TX + TIME_W + COL_W * ci + 4;
-      const cellY = TY + rowH * (c.slot + 1) + 4;
-      const cellW = COL_W - 8;
-      const cellH = rowH - 8;
-      const col = COLORS[c.color];
+    (DAY_MAP[c.days] || []).forEach(ci => {
+      const cellX = TX + TIME_W + COL_W * ci + 5;
+      const cellY = TY + COL_HDR_H + ROW_H * c.slot + 5;
+      const cellW = COL_W - 10;
+      const cellH = ROW_H - 10;
+      const col   = COLORS[c.color];
 
-      // Background
-      ctx.fillStyle = col.bg;
-      roundRect(ctx, cellX, cellY, cellW, cellH, 5); ctx.fill();
+      fillRR(cellX, cellY, cellW, cellH, 7, col.bg);
+      fillRR(cellX, cellY, cellW, 3, [7, 7, 0, 0], col.border);
 
-      // Left accent bar
-      ctx.fillStyle = col.border;
-      roundRect(ctx, cellX, cellY, 5, cellH, [3, 0, 0, 3]); ctx.fill();
-
-      // Course name
       ctx.font = 'bold 12px Nunito, sans-serif';
       ctx.fillStyle = col.text;
       ctx.textAlign = 'center';
-      ctx.fillText(c.name, cellX + cellW / 2 + 2, cellY + cellH * (c.room ? 0.38 : 0.55));
+      const nameY = c.room ? cellY + cellH * 0.42 : cellY + cellH * 0.58;
+      ctx.fillText(fitText(c.name, cellW - 10), cellX + cellW / 2, nameY);
 
-      // Room (if provided)
       if (c.room) {
         ctx.font = '600 10px Nunito Sans, sans-serif';
-        ctx.fillStyle = col.text;
-        ctx.globalAlpha = 0.7;
-        ctx.fillText(c.room, cellX + cellW / 2 + 2, cellY + cellH * 0.65);
+        ctx.fillStyle = col.border;
+        ctx.globalAlpha = 0.9;
+        ctx.fillText(fitText(c.room, cellW - 10), cellX + cellW / 2, cellY + cellH * 0.68);
         ctx.globalAlpha = 1;
       }
     });
@@ -255,28 +254,6 @@ function drawSchedule() {
   ctx.textAlign = 'left';
 }
 
-// ── ROUNDED RECT HELPERS ──────────────────────────────────
-function roundRect(ctx, x, y, w, h, r = 6) {
-  if (typeof r === 'number') r = [r, r, r, r];
-  const [tl, tr, br, bl] = r;
-  ctx.beginPath();
-  ctx.moveTo(x + tl, y);
-  ctx.lineTo(x + w - tr, y); ctx.arcTo(x + w, y,   x + w, y + tr,   tr);
-  ctx.lineTo(x + w, y + h - br); ctx.arcTo(x + w, y + h, x + w - br, y + h, br);
-  ctx.lineTo(x + bl, y + h); ctx.arcTo(x, y + h,   x, y + h - bl,   bl);
-  ctx.lineTo(x, y + tl); ctx.arcTo(x, y,       x + tl, y,     tl);
-  ctx.closePath();
-}
-
-function roundRectTop(ctx, x, y, w, h, r) {
-  roundRect(ctx, x, y, w, h, [r, r, 0, 0]);
-}
-
-function roundRectBottom(ctx, x, y, w, h, r) {
-  roundRect(ctx, x, y, w, h, [0, 0, r, r]);
-}
-
-// ── DOWNLOAD ─────────────────────────────────────────────
 function downloadPNG() {
   const link = document.createElement('a');
   link.download = 'class_schedule.png';
@@ -284,9 +261,7 @@ function downloadPNG() {
   link.click();
 }
 
-// ── LIVE REDRAW ──────────────────────────────────────────
 document.getElementById('studentName').addEventListener('input', drawSchedule);
 document.getElementById('studentDept').addEventListener('input', drawSchedule);
 
-// Initial draw
 drawSchedule();
